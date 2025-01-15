@@ -1,7 +1,7 @@
 streamlit==1.31.0
+langchain-core==0.1.26
 langchain==0.1.9
-langchain-groq==0.2.3
-langchain-core==0.3.29
+langchain-groq==0.1.5
 validators==0.22.0
 pytube==15.0.0
 python-dotenv==1.0.1
