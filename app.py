@@ -45,10 +45,10 @@ generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_in
 @st.cache_resource
 def get_llm():
     return ChatGroq(
-        model="gemma-2-9b-it",
+        model="mixtral-8x7b-32768",  # Change to a supported model
         groq_api_key=st.secrets['GROQ_API_KEY']
     )
-
+    
 llm = get_llm()
 
 # Define summarization prompt
@@ -77,18 +77,27 @@ def get_youtube_transcript(video_id):
     """Get YouTube video transcript with better error handling"""
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        # Try to get English transcript first
+        
+        # First, try to get any manually created transcript
         try:
-            transcript = transcript_list.find_transcript(['en'])
+            transcript = transcript_list.find_manually_created_transcript()
         except NoTranscriptFound:
-            # If no English transcript, get the first available transcript and translate it
-            transcript = transcript_list.find_transcript()
+            # If no manual transcript, try to get any transcript
+            try:
+                available_transcripts = transcript_list.find_generated_transcript()
+                transcript = available_transcripts
+            except NoTranscriptFound:
+                # If still no transcript, try to get any available transcript
+                transcript = next(iter(transcript_list.transcripts.values()))
+        
+        # Translate to English if needed
+        if transcript.language_code != 'en':
             transcript = transcript.translate('en')
         
         transcript_text = ' '.join([t['text'] for t in transcript.fetch()])
         return transcript_text
     except Exception as e:
-        st.error(f"Transcript error: {str(e)}")
+        st.error(f"Could not extract transcript: {str(e)}")
         return None
 
 def extract_text_from_url(url):
