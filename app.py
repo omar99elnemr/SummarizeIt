@@ -51,10 +51,8 @@ def get_youtube_transcript(video_url, retries=3):
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
             transcript_text = ' '.join(entry['text'] for entry in transcript)
             return clean_transcript(transcript_text)
-        except Exception as e:
-            st.warning(f"Attempt {attempt+1} failed: {str(e)}")
+        except Exception:
             time.sleep(2)  # Wait before retrying
-    st.error("Failed to extract transcript after multiple attempts.")
     return None
 
 def clean_transcript(transcript_text):
@@ -79,10 +77,8 @@ def extract_text_from_url(url, retries=3):
             paragraphs = soup.find_all('p')
             text = ' '.join(p.get_text().strip() for p in paragraphs if p.get_text().strip())
             return [Document(page_content=text)] if text.strip() else None
-        except Exception as e:
-            st.warning(f"Attempt {attempt+1} failed: {str(e)}")
+        except Exception:
             time.sleep(2)  # Wait before retrying
-    st.error("Failed to extract content from the URL after multiple attempts.")
     return None
 
 def summarize_content(url):
@@ -113,7 +109,10 @@ if st.button("Summarize Content"):
         with st.spinner("Processing... This may take a minute..."):
             summary, error = summarize_content(generic_url)
             if error:
-                st.error(error)
+                if "transcript" in error:
+                    st.info("Failed to extract transcript from the YouTube video. Please try again.")
+                else:
+                    st.info("Failed to extract content from the URL. Please try again.")
             else:
                 st.success(summary)
 
