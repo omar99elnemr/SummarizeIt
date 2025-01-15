@@ -8,6 +8,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from pytube import YouTube
 from bs4 import BeautifulSoup
 import requests
+from langchain_core.documents import Document
 
 # Get API key from Streamlit secrets
 if 'GROQ_API_KEY' not in st.secrets:
@@ -47,7 +48,8 @@ def get_youtube_transcript(video_url):
     try:
         video_id = YouTube(video_url).video_id
         transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        return ' '.join(entry['text'] for entry in transcript)
+        transcript_text = ' '.join(entry['text'] for entry in transcript)
+        return [Document(page_content=transcript_text)]
     except Exception as e:
         st.error(f"Error extracting transcript: {str(e)}")
         return None
@@ -63,7 +65,7 @@ def extract_text_from_url(url):
         soup = BeautifulSoup(response.content, 'html.parser')
         paragraphs = soup.find_all('p')
         text = ' '.join(p.get_text().strip() for p in paragraphs if p.get_text().strip())
-        return text if text.strip() else None
+        return [Document(page_content=text)] if text.strip() else None
     except Exception as e:
         st.error(f"Web extraction error: {str(e)}")
         return None
@@ -71,16 +73,16 @@ def extract_text_from_url(url):
 def summarize_content(url):
     try:
         if "youtube.com" in url or "youtu.be" in url:
-            text = get_youtube_transcript(url)
-            if not text:
+            docs = get_youtube_transcript(url)
+            if not docs:
                 return None, "Could not extract transcript from YouTube video."
         else:
-            text = extract_text_from_url(url)
-            if not text:
+            docs = extract_text_from_url(url)
+            if not docs:
                 return None, "No content could be extracted from the URL. The page might be protected or require authentication."
         
         chain = load_summarize_chain(llm, chain_type="stuff", prompt=prompt)
-        summary = chain.run([text])
+        summary = chain.run(docs)
         return summary, None
     except Exception as e:
         return None, f"Error processing content: {str(e)}"
