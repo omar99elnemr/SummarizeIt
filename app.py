@@ -1,9 +1,10 @@
 import os
 import validators
 import streamlit as st
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-from langchain.chains.summarize import load_summarize_chain
+from langchain.chains import LLMChain
+from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
 
 # Get API key from Streamlit secrets
@@ -56,7 +57,7 @@ Please include:
 - Important details and context
 - Conclusion or final thoughts
 """
-prompt = PromptTemplate(template=prompt_template, input_variables=["text"])
+prompt = PromptTemplate.from_template(prompt_template)
 
 # Main summarization function
 def summarize_content(url):
@@ -79,13 +80,18 @@ def summarize_content(url):
         if not docs:
             return None, "No content could be extracted from the URL"
         
-        chain = load_summarize_chain(
-            llm,
-            chain_type="stuff",
-            prompt=prompt
+        # Create the LLM chain
+        llm_chain = LLMChain(llm=llm, prompt=prompt)
+        
+        # Create the StuffDocumentsChain
+        stuff_chain = StuffDocumentsChain(
+            llm_chain=llm_chain,
+            document_variable_name="text"
         )
         
-        return chain.run(docs), None
+        # Run the chain
+        summary = stuff_chain.run(docs)
+        return summary, None
         
     except Exception as e:
         return None, f"Error processing content: {str(e)}"
