@@ -130,9 +130,16 @@ st.markdown("""
 """)
 st.sidebar.markdown("### About")
 st.sidebar.markdown(
-    "This app uses Groq AI to summarize content from YouTube videos and websites. "
-    "Created with Streamlit and LangChain."
-)
-st.sidebar.markdown(
-    "[View on GitHub](https://github.com/omar99elnemr/SummarizeIt)"
+    """
+    **SummarizeIt** is a tool that leverages Groq AI to summarize content from YouTube videos and websites.
+
+    **Created by**: [Omar Elnemr](https://github.com/omar99elnemr)
+
+    **Technologies Used**:
+    - **Streamlit**: For the web interface
+    - **LangChain**: For managing the summarization chains
+    - **Groq AI**: For powerful language model capabilities
+
+    **Source Code**: [GitHub Repository](https://github.com/omar99elnemr/SummarizeIt)
+    """
 )
