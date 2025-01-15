@@ -22,3 +22,32 @@ SummarizeIt is a web application that utilizes Groq AI to summarize content from
 1. Clone the repository:
    ```bash
    git clone https://github.com/omar99elnemr/SummarizeIt.git
+
+2. Navigate to the project directory:
+   ```bash
+   cd SummarizeIt
+
+3. Install the required dependencies:
+   ```bash
+   pip install -r requirements.txt
+
+4. Set up your Groq API key in Streamlit secrets. Create a ```.streamlit/secrets.toml``` file and add:
+   ```TOML
+   GROQ_API_KEY = "your_groq_api_key"
+   
+## Usage
+1. Run the Streamlit app:
+   ```bash
+   streamlit run app.py
+2. Open your web browser and go to http://localhost:8501.
+
+
+### Note:
+- For YouTube videos, the video must have subtitles/captions enabled.
+- For websites, the content must be publicly accessible.
+### Examples
+Summarizing a YouTube Video
+Summarizing a Web Page
+
+## Contributing
+Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
