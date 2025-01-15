@@ -38,13 +38,10 @@ generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_in
 
 # Initialize Groq LLM
 @st.cache_resource
-def get_llm():
-    return ChatGroq(
-        model="gemma-7b-it",
-        groq_api_key=st.secrets['GROQ_API_KEY']
-    )
-
-llm = get_llm()
+llm = ChatGroq(
+    model="gemma-7b-it",  # Make sure this model name is correct
+    groq_api_key=st.secrets['GROQ_API_KEY']
+)
 
 # Define summarization prompt
 prompt_template = """
