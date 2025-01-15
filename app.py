@@ -185,7 +185,6 @@ if st.button("Summarize Content"):
             if error:
                 st.error(error)
             else:
-                st.success("Summary generated successfully!")
                 st.success(summary)
 
 # Add footer with information
