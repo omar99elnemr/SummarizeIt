@@ -76,28 +76,64 @@ def get_youtube_id(url):
 def get_youtube_transcript(video_id):
     """Get YouTube video transcript with better error handling"""
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        # First, try to get any manually created transcript
+        # Try getting the transcript directly first
         try:
-            transcript = transcript_list.find_manually_created_transcript()
-        except NoTranscriptFound:
-            # If no manual transcript, try to get any transcript
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            return ' '.join([t['text'] for t in transcript])
+        except Exception:
+            # If direct method fails, try the list_transcripts approach
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            
+            # Try different approaches to get the transcript
+            transcript = None
+            
+            # Try to get English transcript first
             try:
-                available_transcripts = transcript_list.find_generated_transcript()
-                transcript = available_transcripts
+                transcript = transcript_list.find_transcript(['en'])
             except NoTranscriptFound:
-                # If still no transcript, try to get any available transcript
-                transcript = next(iter(transcript_list.transcripts.values()))
-        
-        # Translate to English if needed
-        if transcript.language_code != 'en':
-            transcript = transcript.translate('en')
-        
-        transcript_text = ' '.join([t['text'] for t in transcript.fetch()])
-        return transcript_text
+                pass
+            
+            # If no English transcript, try to get any manually created transcript
+            if not transcript:
+                try:
+                    transcript = transcript_list.find_manually_created_transcript()
+                except NoTranscriptFound:
+                    pass
+            
+            # If still no transcript, try to get auto-generated transcript
+            if not transcript:
+                try:
+                    available_transcripts = list(transcript_list.transcripts.values())
+                    if available_transcripts:
+                        transcript = available_transcripts[0]
+                except Exception:
+                    pass
+            
+            # If we found a transcript
+            if transcript:
+                # Translate to English if needed
+                if transcript.language_code != 'en':
+                    try:
+                        transcript = transcript.translate('en')
+                    except Exception as e:
+                        st.warning(f"Could not translate transcript to English: {str(e)}")
+                
+                transcript_text = ' '.join([t['text'] for t in transcript.fetch()])
+                return transcript_text
+            
+            raise Exception("No transcript found after trying all methods")
+            
     except Exception as e:
-        st.error(f"Could not extract transcript: {str(e)}")
+        detailed_error = f"""Could not extract transcript: {str(e)}
+        
+        This might be due to:
+        1. The video doesn't have any captions/subtitles
+        2. The captions are disabled or private
+        3. YouTube API access issues
+        
+        Please try another video or verify that captions are available."""
+        
+        st.error(detailed_error)
         return None
 
 def extract_text_from_url(url):
