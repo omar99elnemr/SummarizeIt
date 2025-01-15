@@ -5,7 +5,9 @@ from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains import LLMChain
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
-from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
+from langchain_community.document_loaders import YoutubeLoader, WebBaseLoader
+from youtube_transcript_api import YouTubeTranscriptApi
+from urllib.parse import urlparse, parse_qs
 
 # Get API key from Streamlit secrets
 if 'GROQ_API_KEY' not in st.secrets:
@@ -59,26 +61,54 @@ Please include:
 """
 prompt = PromptTemplate.from_template(prompt_template)
 
+def get_youtube_id(url):
+    """Extract YouTube video ID from URL"""
+    parsed_url = urlparse(url)
+    if parsed_url.hostname in ('youtu.be', 'www.youtu.be'):
+        return parsed_url.path[1:]
+    if parsed_url.hostname in ('youtube.com', 'www.youtube.com'):
+        if parsed_url.path == '/watch':
+            return parse_qs(parsed_url.query)['v'][0]
+    return None
+
+def get_youtube_transcript(video_id):
+    """Get YouTube video transcript"""
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript = ' '.join([t['text'] for t in transcript_list])
+        return transcript
+    except Exception as e:
+        return None
+
 # Main summarization function
 def summarize_content(url):
     try:
         if "youtube.com" in url or "youtu.be" in url:
-            loader = YoutubeLoader.from_youtube_url(
-                url,
-                add_video_info=True
-            )
+            video_id = get_youtube_id(url)
+            if not video_id:
+                return None, "Could not extract YouTube video ID from URL"
+            
+            transcript = get_youtube_transcript(video_id)
+            if not transcript:
+                return None, "Could not extract transcript from YouTube video"
+            
+            # Create document for processing
+            from langchain_core.documents import Document
+            doc = Document(page_content=transcript)
+            docs = [doc]
+            
         else:
-            loader = UnstructuredURLLoader(
-                urls=[url],
-                ssl_verify=False,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
-                },
-                mode="elements"
+            # Use WebBaseLoader for non-YouTube URLs
+            loader = WebBaseLoader(
+                web_paths=[url],
+                bs_kwargs=dict(
+                    parse_only=None,
+                    features="lxml"
+                )
             )
+            docs = loader.load()
         
-        docs = loader.load()
-        if not docs:
+        if not docs or not docs[0].page_content.strip():
             return None, "No content could be extracted from the URL"
         
         # Create the LLM chain
