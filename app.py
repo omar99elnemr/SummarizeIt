@@ -8,6 +8,7 @@ from pytube import YouTube
 from bs4 import BeautifulSoup
 import requests
 from langchain_core.documents import Document
+import time
 
 # Get API key from Streamlit secrets
 if 'GROQ_API_KEY' not in st.secrets:
@@ -42,16 +43,19 @@ Please include:
 """
 prompt = PromptTemplate(template=prompt_template, input_variables=["text"])
 
-def get_youtube_transcript(video_url):
-    """Get YouTube video transcript using youtube_transcript_api and clean it up"""
-    try:
-        video_id = YouTube(video_url).video_id
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        transcript_text = ' '.join(entry['text'] for entry in transcript)
-        return clean_transcript(transcript_text)
-    except Exception as e:
-        st.error(f"Error extracting transcript: {str(e)}")
-        return None
+def get_youtube_transcript(video_url, retries=3):
+    """Get YouTube video transcript using youtube_transcript_api with retry logic"""
+    for attempt in range(retries):
+        try:
+            video_id = YouTube(video_url).video_id
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript_text = ' '.join(entry['text'] for entry in transcript)
+            return clean_transcript(transcript_text)
+        except Exception as e:
+            st.warning(f"Attempt {attempt+1} failed: {str(e)}")
+            time.sleep(2)  # Wait before retrying
+    st.error("Failed to extract transcript after multiple attempts.")
+    return None
 
 def clean_transcript(transcript_text):
     """Clean up the transcript text by removing repeated phrases and unnecessary characters"""
@@ -62,21 +66,24 @@ def clean_transcript(transcript_text):
         cleaned_lines.append(cleaned_line)
     return '. '.join(cleaned_lines)
 
-def extract_text_from_url(url):
-    """Extract text content from a website URL"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-        paragraphs = soup.find_all('p')
-        text = ' '.join(p.get_text().strip() for p in paragraphs if p.get_text().strip())
-        return [Document(page_content=text)] if text.strip() else None
-    except Exception as e:
-        st.error(f"Web extraction error: {str(e)}")
-        return None
+def extract_text_from_url(url, retries=3):
+    """Extract text content from a website URL with retry logic"""
+    for attempt in range(retries):
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            paragraphs = soup.find_all('p')
+            text = ' '.join(p.get_text().strip() for p in paragraphs if p.get_text().strip())
+            return [Document(page_content=text)] if text.strip() else None
+        except Exception as e:
+            st.warning(f"Attempt {attempt+1} failed: {str(e)}")
+            time.sleep(2)  # Wait before retrying
+    st.error("Failed to extract content from the URL after multiple attempts.")
+    return None
 
 def summarize_content(url):
     try:
@@ -126,7 +133,6 @@ st.sidebar.markdown("### About")
 st.sidebar.markdown(
     "This app uses Groq AI to summarize content from YouTube videos and websites. "
     "Created with Streamlit and LangChain."
-    "####Created by Omar"
 )
 st.sidebar.markdown(
     "[View on GitHub](https://github.com/omar99elnemr/SummarizeIt)"
