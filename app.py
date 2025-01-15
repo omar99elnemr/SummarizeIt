@@ -45,7 +45,7 @@ generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_in
 @st.cache_resource
 def get_llm():
     return ChatGroq(
-        model="mixtral-8x7b-32768",  # Change to a supported model
+        model="llama2-70b-4096",  # Change to a supported model
         groq_api_key=st.secrets['GROQ_API_KEY']
     )
     
@@ -186,7 +186,7 @@ if st.button("Summarize Content"):
                 st.error(error)
             else:
                 st.success("Summary generated successfully!")
-                st.write(summary)
+                st.success(summary)
 
 # Add footer with information
 st.markdown("---")
