@@ -1,197 +1,56 @@
-import os
-import validators
-import streamlit as st
-import requests
-from bs4 import BeautifulSoup
-from langchain_core.prompts import PromptTemplate
+import validators,streamlit as st
+from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-from langchain.chains import LLMChain
-from langchain.chains.combine_documents.stuff import StuffDocumentsChain
-from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
-from youtube_transcript_api import YouTubeTranscriptApi
-from urllib.parse import urlparse, parse_qs
-from langchain_core.documents import Document
+from langchain.chains.summarize import load_summarize_chain
+from langchain_community.document_loaders import YoutubeLoader,UnstructuredURLLoader
 
-# Get API key from Streamlit secrets
-if 'GROQ_API_KEY' not in st.secrets:
-    st.error('GROQ_API_KEY is not set in the secrets. Please set it up in your Streamlit dashboard.')
-    st.stop()
 
-# Streamlit app configuration
-st.set_page_config(
-    page_title="Summarize Text From YT or Website",
-    page_icon="⚡",
-    layout="wide"
-)
+## sstreamlit APP
+st.set_page_config(page_title="LangChain: Summarize Text From YT or Website", page_icon="🦜")
+st.title("🦜 LangChain: Summarize Text From YT or Website")
+st.subheader('Summarize URL')
 
-# Debug mode toggle
-debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
 
-def get_youtube_id(url):
-    """Extract YouTube video ID from URL"""
-    try:
-        parsed_url = urlparse(url)
-        if parsed_url.hostname in ('youtu.be', 'www.youtu.be'):
-            return parsed_url.path[1:]
-        if parsed_url.hostname in ('youtube.com', 'www.youtube.com'):
-            if parsed_url.path == '/watch':
-                return parse_qs(parsed_url.query)['v'][0]
-        return None
-    except Exception:
-        return None
 
-def get_youtube_transcript(video_id):
-    """Get YouTube transcript using youtube_transcript_api"""
-    try:
-        if debug_mode:
-            st.write(f"Attempting to get transcript for video ID: {video_id}")
-        
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        return ' '.join(entry['text'] for entry in transcript)
-    except Exception as e:
-        if debug_mode:
-            st.write(f"Error getting transcript: {str(e)}")
-        return None
+## Get the Groq API Key and url(YT or website)to be summarized
+with st.sidebar:
+    groq_api_key=st.text_input("Groq API Key",value="",type="password")
 
-def extract_content(url):
-    """Extract content from URL (YouTube or website) with fallback mechanisms"""
-    try:
-        if "youtube.com" in url or "youtu.be" in url:
-            video_id = get_youtube_id(url)
-            if not video_id:
-                raise ValueError("Could not extract YouTube video ID")
+generic_url=st.text_input("URL",label_visibility="collapsed")
 
-            if debug_mode:
-                st.write(f"Extracted video ID: {video_id}")
+## Gemma Model USsing Groq API
+llm =ChatGroq(model="Gemma-7b-It", groq_api_key=groq_api_key)
 
-            # Try youtube_transcript_api first
-            transcript = get_youtube_transcript(video_id)
-            
-            if transcript:
-                if debug_mode:
-                    st.write("Successfully got transcript using youtube_transcript_api")
-                return [Document(page_content=transcript)]
-            
-            # Fallback to YoutubeLoader
-            if debug_mode:
-                st.write("Trying YoutubeLoader as fallback...")
-            
-            try:
-                loader = YoutubeLoader.from_youtube_url(
-                    url,
-                    add_video_info=True,
-                    language=['en']
-                )
-                docs = loader.load()
-                if docs:
-                    if debug_mode:
-                        st.write("Successfully got content using YoutubeLoader")
-                    return docs
-            except Exception as e:
-                if debug_mode:
-                    st.write(f"YoutubeLoader failed: {str(e)}")
-                raise Exception("Could not extract video content using any available method")
-        else:
-            # Handle website URLs
-            loader = UnstructuredURLLoader(
-                urls=[url],
-                ssl_verify=False,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-            )
-            docs = loader.load()
-            return docs if docs else None
-    
-    except Exception as e:
-        if debug_mode:
-            st.write(f"Final error in extract_content: {str(e)}")
-        raise Exception(f"Error extracting content: {str(e)}")
-
-# Initialize Groq LLM
-@st.cache_resource
-def get_llm():
-    return ChatGroq(
-        model="gemma-7b-it",
-        groq_api_key=st.secrets['GROQ_API_KEY']
-    )
-
-llm = get_llm()
-
-# Define summarization prompt
-prompt_template = """
+prompt_template="""
 Provide a summary of the following content in 300 words:
-Content: {text}
+Content:{text}
 
-Please include:
-- Main points and key takeaways
-- Important details and context
-- Conclusion or final thoughts
 """
-prompt = PromptTemplate.from_template(prompt_template)
+prompt=PromptTemplate(template=prompt_template,input_variables=["text"])
 
-# Main summarization function
-def summarize_content(url):
-    try:
-        # Extract content from URL
-        docs = extract_content(url)
-        if not docs:
-            return None, "Could not extract content from the URL."
-        
-        # Create the LLM chain
-        llm_chain = LLMChain(llm=llm, prompt=prompt)
-        
-        # Create the StuffDocumentsChain
-        stuff_chain = StuffDocumentsChain(
-            llm_chain=llm_chain,
-            document_variable_name="text"
-        )
-        
-        # Run the chain
-        summary = stuff_chain.run(docs)
-        return summary, None
-        
-    except Exception as e:
-        return None, f"Error processing content: {str(e)}"
-
-# URL input
-generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_input")
-
-# Button to trigger summarization
-if st.button("Summarize Content"):
-    if not generic_url.strip():
-        st.error("Please provide a URL to get started")
+if st.button("Summarize the Content from YT or Website"):
+    ## Validate all the inputs
+    if not groq_api_key.strip() or not generic_url.strip():
+        st.error("Please provide the information to get started")
     elif not validators.url(generic_url):
-        st.error("Please enter a valid URL (YouTube video or website)")
+        st.error("Please enter a valid Url. It can may be a YT video utl or website url")
+
     else:
-        with st.spinner("Processing... This may take a minute..."):
-            summary, error = summarize_content(generic_url)
-            
-            if error:
-                st.error(error)
-            else:
-                st.success("Summary generated successfully!")
-                st.write(summary)
+        try:
+            with st.spinner("Waiting..."):
+                ## loading the website or yt video data
+                if "youtube.com" in generic_url:
+                    loader=YoutubeLoader.from_youtube_url(generic_url,add_video_info=True)
+                else:
+                    loader=UnstructuredURLLoader(urls=[generic_url],ssl_verify=False,
+                                                 headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"})
+                docs=loader.load()
 
-# Add footer with information
-st.markdown("---")
-st.markdown("### How to use:")
-st.markdown("""
-1. Enter a valid URL (YouTube video or website)
-2. Click 'Summarize Content'
-3. Wait for the summary to be generated
+                ## Chain For Summarization
+                chain=load_summarize_chain(llm,chain_type="stuff",prompt=prompt)
+                output_summary=chain.run(docs)
 
-**Note**: 
-- For YouTube videos, the video must be publicly accessible
-- For websites, the content must be publicly accessible
-""")
-
-# Add GitHub link
-st.sidebar.markdown("### About")
-st.sidebar.markdown(
-    "This app uses Groq AI to summarize content from YouTube videos and websites. "
-    "Created with Streamlit and LangChain."
-)
-st.sidebar.markdown(
-    "[View on GitHub](https://github.com/omar99elnemr/SummarizeIt)"
-)
+                st.success(output_summary)
+        except Exception as e:
+            st.exception(f"Exception:{e}")
+                    
