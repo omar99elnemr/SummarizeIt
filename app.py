@@ -8,6 +8,8 @@ from langchain_groq import ChatGroq
 from langchain.chains import LLMChain
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
+from youtube_transcript_api import YouTubeTranscriptApi
+from urllib.parse import urlparse, parse_qs
 from langchain_core.documents import Document
 
 # Get API key from Streamlit secrets
@@ -22,29 +24,95 @@ st.set_page_config(
     layout="wide"
 )
 
-# Apply custom CSS
-st.markdown("""
-    <style>
-    .main {
-        padding: 2rem;
-    }
-    .stButton>button {
-        width: 100%;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# Debug mode toggle
+debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
 
-st.title("Summarize Text From YT or Website ⚡🦜")
-st.subheader('Summarize URL')
+def get_youtube_id(url):
+    """Extract YouTube video ID from URL"""
+    try:
+        parsed_url = urlparse(url)
+        if parsed_url.hostname in ('youtu.be', 'www.youtu.be'):
+            return parsed_url.path[1:]
+        if parsed_url.hostname in ('youtube.com', 'www.youtube.com'):
+            if parsed_url.path == '/watch':
+                return parse_qs(parsed_url.query)['v'][0]
+        return None
+    except Exception:
+        return None
 
-# URL input
-generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_input")
+def get_youtube_transcript(video_id):
+    """Get YouTube transcript using youtube_transcript_api"""
+    try:
+        if debug_mode:
+            st.write(f"Attempting to get transcript for video ID: {video_id}")
+        
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        return ' '.join(entry['text'] for entry in transcript)
+    except Exception as e:
+        if debug_mode:
+            st.write(f"Error getting transcript: {str(e)}")
+        return None
+
+def extract_content(url):
+    """Extract content from URL (YouTube or website) with fallback mechanisms"""
+    try:
+        if "youtube.com" in url or "youtu.be" in url:
+            video_id = get_youtube_id(url)
+            if not video_id:
+                raise ValueError("Could not extract YouTube video ID")
+
+            if debug_mode:
+                st.write(f"Extracted video ID: {video_id}")
+
+            # Try youtube_transcript_api first
+            transcript = get_youtube_transcript(video_id)
+            
+            if transcript:
+                if debug_mode:
+                    st.write("Successfully got transcript using youtube_transcript_api")
+                return [Document(page_content=transcript)]
+            
+            # Fallback to YoutubeLoader
+            if debug_mode:
+                st.write("Trying YoutubeLoader as fallback...")
+            
+            try:
+                loader = YoutubeLoader.from_youtube_url(
+                    url,
+                    add_video_info=True,
+                    language=['en']
+                )
+                docs = loader.load()
+                if docs:
+                    if debug_mode:
+                        st.write("Successfully got content using YoutubeLoader")
+                    return docs
+            except Exception as e:
+                if debug_mode:
+                    st.write(f"YoutubeLoader failed: {str(e)}")
+                raise Exception("Could not extract video content using any available method")
+        else:
+            # Handle website URLs
+            loader = UnstructuredURLLoader(
+                urls=[url],
+                ssl_verify=False,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+            )
+            docs = loader.load()
+            return docs if docs else None
+    
+    except Exception as e:
+        if debug_mode:
+            st.write(f"Final error in extract_content: {str(e)}")
+        raise Exception(f"Error extracting content: {str(e)}")
 
 # Initialize Groq LLM
 @st.cache_resource
 def get_llm():
     return ChatGroq(
-        model="gemma2-9b-it",  # Updated to use the correct model name
+        model="gemma-7b-it",
         groq_api_key=st.secrets['GROQ_API_KEY']
     )
 
@@ -61,33 +129,6 @@ Please include:
 - Conclusion or final thoughts
 """
 prompt = PromptTemplate.from_template(prompt_template)
-
-def extract_content(url):
-    """Extract content from URL (YouTube or website)"""
-    try:
-        if "youtube.com" in url or "youtu.be" in url:
-            # Use YoutubeLoader for YouTube videos
-            loader = YoutubeLoader.from_youtube_url(
-                url,
-                add_video_info=True
-            )
-            docs = loader.load()
-        else:
-            # Use UnstructuredURLLoader for websites
-            loader = UnstructuredURLLoader(
-                urls=[url],
-                ssl_verify=False,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-            )
-            docs = loader.load()
-        
-        return docs if docs else None
-    
-    except Exception as e:
-        st.error(f"Error extracting content: {str(e)}")
-        return None
 
 # Main summarization function
 def summarize_content(url):
@@ -112,6 +153,9 @@ def summarize_content(url):
         
     except Exception as e:
         return None, f"Error processing content: {str(e)}"
+
+# URL input
+generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_input")
 
 # Button to trigger summarization
 if st.button("Summarize Content"):
