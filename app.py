@@ -44,7 +44,7 @@ generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_in
 @st.cache_resource
 def get_llm():
     return ChatGroq(
-        model="gemma-7b-it",  # Updated to use the correct model name
+        model="gemma2-9b-it",  # Updated to use the correct model name
         groq_api_key=st.secrets['GROQ_API_KEY']
     )
 
