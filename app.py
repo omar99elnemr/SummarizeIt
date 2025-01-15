@@ -7,8 +7,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains import LLMChain
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
-from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound
-from urllib.parse import urlparse, parse_qs
+from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
 from langchain_core.documents import Document
 
 # Get API key from Streamlit secrets
@@ -45,10 +44,10 @@ generic_url = st.text_input("Enter URL (YouTube video or website):", key="url_in
 @st.cache_resource
 def get_llm():
     return ChatGroq(
-        model="gemma2-9b-it",  
+        model="gemma-7b-it",  # Updated to use the correct model name
         groq_api_key=st.secrets['GROQ_API_KEY']
     )
-    
+
 llm = get_llm()
 
 # Define summarization prompt
@@ -63,134 +62,40 @@ Please include:
 """
 prompt = PromptTemplate.from_template(prompt_template)
 
-def get_youtube_id(url):
-    """Extract YouTube video ID from URL"""
-    parsed_url = urlparse(url)
-    if parsed_url.hostname in ('youtu.be', 'www.youtu.be'):
-        return parsed_url.path[1:]
-    if parsed_url.hostname in ('youtube.com', 'www.youtube.com'):
-        if parsed_url.path == '/watch':
-            return parse_qs(parsed_url.query).get('v', [None])[0]
-    return None
-
-def get_youtube_transcript(video_id):
-    """Get YouTube video transcript with better error handling"""
+def extract_content(url):
+    """Extract content from URL (YouTube or website)"""
     try:
-        # Try getting the transcript directly first
-        try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            return ' '.join([t['text'] for t in transcript])
-        except Exception:
-            # If direct method fails, try the list_transcripts approach
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            
-            # Try different approaches to get the transcript
-            transcript = None
-            
-            # Try to get English transcript first
-            try:
-                transcript = transcript_list.find_transcript(['en'])
-            except NoTranscriptFound:
-                pass
-            
-            # If no English transcript, try to get any manually created transcript
-            if not transcript:
-                try:
-                    transcript = transcript_list.find_manually_created_transcript()
-                except NoTranscriptFound:
-                    pass
-            
-            # If still no transcript, try to get auto-generated transcript
-            if not transcript:
-                try:
-                    available_transcripts = list(transcript_list.transcripts.values())
-                    if available_transcripts:
-                        transcript = available_transcripts[0]
-                except Exception:
-                    pass
-            
-            # If we found a transcript
-            if transcript:
-                # Translate to English if needed
-                if transcript.language_code != 'en':
-                    try:
-                        transcript = transcript.translate('en')
-                    except Exception as e:
-                        st.warning(f"Could not translate transcript to English: {str(e)}")
-                
-                transcript_text = ' '.join([t['text'] for t in transcript.fetch()])
-                return transcript_text
-            
-            raise Exception("No transcript found after trying all methods")
-            
-    except Exception as e:
-        detailed_error = f"""Could not extract transcript: {str(e)}
-        
-        This might be due to:
-        1. The video doesn't have any captions/subtitles
-        2. The captions are disabled or private
-        3. YouTube API access issues
-        
-        Please try another video or verify that captions are available."""
-        
-        st.error(detailed_error)
-        return None
-
-def extract_text_from_url(url):
-    """Extract text content from a website URL"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers, verify=False)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Remove unwanted elements
-        for element in soup(['script', 'style', 'header', 'footer', 'nav']):
-            element.decompose()
-        
-        # Extract text from main content areas
-        main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content') or soup.body
-        
-        if main_content:
-            paragraphs = main_content.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            text = ' '.join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
+        if "youtube.com" in url or "youtu.be" in url:
+            # Use YoutubeLoader for YouTube videos
+            loader = YoutubeLoader.from_youtube_url(
+                url,
+                add_video_info=True
+            )
+            docs = loader.load()
         else:
-            # Fallback to all paragraphs if no main content area found
-            paragraphs = soup.find_all('p')
-            text = ' '.join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
+            # Use UnstructuredURLLoader for websites
+            loader = UnstructuredURLLoader(
+                urls=[url],
+                ssl_verify=False,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+            )
+            docs = loader.load()
         
-        return text if text.strip() else None
+        return docs if docs else None
+    
     except Exception as e:
-        st.error(f"Web extraction error: {str(e)}")
+        st.error(f"Error extracting content: {str(e)}")
         return None
 
 # Main summarization function
 def summarize_content(url):
     try:
-        if "youtube.com" in url or "youtu.be" in url:
-            video_id = get_youtube_id(url)
-            if not video_id:
-                return None, "Could not extract YouTube video ID from URL"
-            
-            transcript = get_youtube_transcript(video_id)
-            if not transcript:
-                return None, "Could not extract transcript from YouTube video. The video might not have subtitles enabled."
-            
-            docs = [Document(page_content=transcript)]
-            
-        else:
-            # Extract text from website
-            text = extract_text_from_url(url)
-            if not text:
-                return None, "No content could be extracted from the URL. The page might be protected or require authentication."
-            
-            docs = [Document(page_content=text)]
-        
-        if not docs or not docs[0].page_content.strip():
-            return None, "No content could be extracted from the URL"
+        # Extract content from URL
+        docs = extract_content(url)
+        if not docs:
+            return None, "Could not extract content from the URL."
         
         # Create the LLM chain
         llm_chain = LLMChain(llm=llm, prompt=prompt)
@@ -221,7 +126,8 @@ if st.button("Summarize Content"):
             if error:
                 st.error(error)
             else:
-                st.success(summary)
+                st.success("Summary generated successfully!")
+                st.write(summary)
 
 # Add footer with information
 st.markdown("---")
@@ -232,7 +138,7 @@ st.markdown("""
 3. Wait for the summary to be generated
 
 **Note**: 
-- For YouTube videos, the video must have subtitles/captions enabled
+- For YouTube videos, the video must be publicly accessible
 - For websites, the content must be publicly accessible
 """)
 
