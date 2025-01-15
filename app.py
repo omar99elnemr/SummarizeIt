@@ -3,7 +3,6 @@ import validators
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
-from langchain_community.document_loaders import UnstructuredURLLoader
 from youtube_transcript_api import YouTubeTranscriptApi
 from pytube import YouTube
 from bs4 import BeautifulSoup
@@ -127,6 +126,7 @@ st.sidebar.markdown("### About")
 st.sidebar.markdown(
     "This app uses Groq AI to summarize content from YouTube videos and websites. "
     "Created with Streamlit and LangChain."
+    "####Created by Omar"
 )
 st.sidebar.markdown(
     "[View on GitHub](https://github.com/omar99elnemr/SummarizeIt)"
