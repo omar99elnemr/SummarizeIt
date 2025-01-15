@@ -3,7 +3,7 @@ import validators
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
-from langchain_community.document_loaders import YoutubeLoader, UnstructuredURLLoader
+from langchain_community.document_loaders import UnstructuredURLLoader
 from youtube_transcript_api import YouTubeTranscriptApi
 from pytube import YouTube
 from bs4 import BeautifulSoup
@@ -44,15 +44,24 @@ Please include:
 prompt = PromptTemplate(template=prompt_template, input_variables=["text"])
 
 def get_youtube_transcript(video_url):
-    """Get YouTube video transcript using youtube_transcript_api"""
+    """Get YouTube video transcript using youtube_transcript_api and clean it up"""
     try:
         video_id = YouTube(video_url).video_id
         transcript = YouTubeTranscriptApi.get_transcript(video_id)
         transcript_text = ' '.join(entry['text'] for entry in transcript)
-        return [Document(page_content=transcript_text)]
+        return clean_transcript(transcript_text)
     except Exception as e:
         st.error(f"Error extracting transcript: {str(e)}")
         return None
+
+def clean_transcript(transcript_text):
+    """Clean up the transcript text by removing repeated phrases and unnecessary characters"""
+    lines = transcript_text.split('. ')
+    cleaned_lines = []
+    for line in lines:
+        cleaned_line = ' '.join(dict.fromkeys(line.split()))
+        cleaned_lines.append(cleaned_line)
+    return '. '.join(cleaned_lines)
 
 def extract_text_from_url(url):
     """Extract text content from a website URL"""
@@ -73,9 +82,10 @@ def extract_text_from_url(url):
 def summarize_content(url):
     try:
         if "youtube.com" in url or "youtu.be" in url:
-            docs = get_youtube_transcript(url)
-            if not docs:
+            transcript = get_youtube_transcript(url)
+            if not transcript:
                 return None, "Could not extract transcript from YouTube video."
+            docs = [Document(page_content=transcript)]
         else:
             docs = extract_text_from_url(url)
             if not docs:
