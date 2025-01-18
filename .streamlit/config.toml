@@ -1,2 +1,0 @@
-[server]
-rustUpCommand = "bash rust-version.sh"
