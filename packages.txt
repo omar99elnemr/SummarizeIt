@@ -9,3 +9,6 @@ build-essential
 tesseract-ocr
 libtesseract-dev
 poppler-utils
+curl
+cargo
+rustc
