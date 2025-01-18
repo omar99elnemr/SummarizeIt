@@ -131,7 +131,7 @@ st.markdown("""
 st.sidebar.markdown("### About")
 st.sidebar.markdown(
     """
-    **SummarizeIt** is a tool that leverages Groq AI to summarize content from YouTube videos and websites.
+    **SummarizzeIt** is a tool that leverages Groq AI to summarize content from YouTube videos and websites.
 
     **Created by**: [Omar Elnemr](https://github.com/omar99elnemr)
 
